@@ -1,0 +1,253 @@
+---
+title: "reds_hackathon"
+author: "Harrison Cradduck"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#read in packages
+library(tidyverse)
+library(dplyr)
+library(caret)
+```
+
+```{r}
+#set working directory
+setwd("C:\\Users\\harri\\Downloads")
+```
+
+```{r}
+#read in data
+lahman_people_data <- read.csv("lahman_people.csv", header=TRUE)
+savant_pitch_by_pitch <- read.csv("savant_data_2021_2023.csv", header=TRUE)
+```
+
+```{r}
+#view datasets
+head(lahman_people_data)
+head(savant_pitch_by_pitch)
+```
+
+```{r}
+#wrangle lahman data
+lahmanPeopleData <- lahman_people_data %>%
+  mutate(debutYear = substr(debut, 1, 4)) %>%
+  select(-birthMonth, -birthDay, -birthDate, -debut, -playerID_LAHMAN) %>%
+  rename(playerMLBID = player_mlb_id)
+head(lahmanPeopleData)
+```
+
+```{r}
+#columns/variables to average for batters
+columnsToAvgBatter <- c("hit_distance_sc", "launch_speed", "launch_angle", "strikes", "hc_x", "hc_y", "estimated_ba_using_speedangle", "estimated_woba_using_speedangle", "woba_value", "woba_denom", "babip_value", "iso_value")
+```
+
+```{r}
+#calculate totals and averages for batters by year
+plateAppearancesByYear <- 
+    savant_pitch_by_pitch %>%
+    group_by(
+        batter,
+        game_year,
+        game_pk,
+        at_bat_number
+    ) %>%
+    summarise(
+        stand = first(stand),
+        across(all_of(columnsToAvgBatter), ~ mean(.x, na.rm = TRUE), .names = "avg_{.col}")
+    ) %>%
+    ungroup() %>%
+    group_by(
+        batter,
+        game_year
+    ) %>%
+    summarise(
+        atBats = n(),
+        stand = first(stand),
+        across(starts_with("avg_"), ~ mean(.x, na.rm = TRUE))
+    ) %>%
+    ungroup()
+```
+
+```{r}
+head(plateAppearancesByYear)
+```
+
+```{r}
+#combine selected savant and lahman data for batters
+plateAppearancesByYear <- plateAppearancesByYear %>%
+    left_join(lahmanPeopleData, by = c("batter" = "playerMLBID"))
+```
+
+```{r}
+head(plateAppearancesByYear)
+```
+
+```{r}
+#data frame with batters' totals and averages over last three years combined
+plateAppearancesTotal <- 
+    plateAppearancesByYear %>%
+    group_by(batter) %>%
+    summarise(
+        #totalAtBats = sum(atBats, na.rm = TRUE),
+        avgAtBats = mean(atBats),
+        stand = first(stand),
+        across(starts_with("avg_"), ~ weighted.mean(.x, atBats, na.rm = TRUE), .names = "weighted_{.col}")
+    ) %>%
+    ungroup()
+```
+
+```{r}
+head(plateAppearancesTotal)
+```
+
+```{r}
+#columns/variables to average for pitchers
+columnsToAvgPitcher <- c("release_speed", "release_pos_x", "release_pos_y", "balls", "strikes", "pfx_x", "pfx_z", "vx0", "vy0", "vz0", "ax", "ay", "az", "effective_speed", "release_spin_rate", "release_extension", "spin_axis")
+```
+
+```{r}
+#slimmer data table to make processing easier
+savant_pitch_by_pitch2 <- savant_pitch_by_pitch %>%
+  select(-pitch_type, -game_date, -game_type, -events, -description, -home_team, -away_team, -type, -hit_location, -bb_type, -on_3b, -on_2b, -on_1b, -fielder_2, -fielder_2_1, -fielder_3, -fielder_4, -fielder_5, -fielder_6, -fielder_7, -fielder_8, -fielder_9, -pitcher_1, -if_fielding_alignment, -of_fielding_alignment, -bat_score, -fld_score, -post_away_score, -post_home_score, -post_bat_score, -post_fld_score)
+```
+
+```{r}
+#calculate totals and averages for pitchers by year
+battersFacedByYear <- 
+    savant_pitch_by_pitch %>%
+    #slice(1:1000) %>%
+    group_by(
+        pitcher,
+        game_year,
+        game_pk,
+        at_bat_number
+    ) %>%
+    summarise(
+        sp_indicator = first(sp_indicator),
+        rp_indicator = first(rp_indicator),
+        throws = first(p_throws),
+        across(all_of(columnsToAvgPitcher), ~ mean(.x, na.rm = TRUE), .names = "avg_{.col}")
+    ) %>%
+    ungroup() %>%
+    group_by(
+        pitcher,
+        game_year,
+        game_pk
+    ) %>%
+    summarise(
+        throws = first(throws),
+        game_start = max(sp_indicator, na.rm = TRUE),
+        game_relief = max(rp_indicator, na.rm = TRUE),
+        battersFacedAsStarter = sum(sp_indicator, na.rm = TRUE),
+        battersFacedAsReliever = sum(rp_indicator, na.rm = TRUE),
+        across(starts_with("avg_"), ~ mean(.x, na.rm = TRUE))
+    ) %>%
+    ungroup() %>%
+    group_by(
+        pitcher,
+        game_year
+    ) %>%
+    summarise(
+        atBatsFaced = sum(battersFacedAsStarter + battersFacedAsReliever),
+        throws = first(throws),
+        starts = sum(game_start, na.rm = TRUE),
+        reliefs = sum(game_relief, na.rm = TRUE),
+        battersFacedAsStarter = sum(battersFacedAsStarter, na.rm = TRUE),
+        battersFacedAsReliever = sum(battersFacedAsReliever, na.rm = TRUE),
+        across(starts_with("avg_"), ~ mean(.x, na.rm = TRUE))
+    ) %>%
+    ungroup()
+```
+
+```{r}
+head(battersFacedByYear)
+```
+
+```{r}
+#combine selected savant and lahman data for pitchers
+battersFacedByYear <- battersFacedByYear %>%
+    left_join(lahmanPeopleData, by = c("pitcher" = "playerMLBID"))
+```
+
+```{r}
+head(battersFacedByYear)
+```
+
+```{r}
+#data frame with pitchers' totals and averages over last three years combined
+battersFacedTotal <- 
+    battersFacedByYear %>%
+    group_by(pitcher) %>%
+    summarise(
+        totalAtBatsFaced = sum(atBatsFaced, na.rm = TRUE),
+        avgAtBatsFaced = mean(atBatsFaced, na.rm = TRUE),
+        totalStarts = sum(starts, na.rm = TRUE),
+        totalReliefs = sum(reliefs, na.rm = TRUE),
+        totalBattersFacedAsStarter = sum(battersFacedAsStarter, na.rm = TRUE),
+        totalBattersFacedAsReliever = sum(battersFacedAsReliever, na.rm = TRUE),
+        across(
+            starts_with("avg_"), 
+            ~ weighted.mean(.x, w = atBatsFaced, na.rm = TRUE), 
+            .names = "weighted_{.col}"
+        )
+    ) %>%
+    ungroup()
+```
+
+
+```{r}
+head(battersFacedTotal)
+```
+
+```{r}
+#first look at regression for batters' playing time
+#glimpse(plateAppearancesTotal)
+plateAppearancesTotalFiltered <- plateAppearancesTotal %>%
+  select(-batter) %>%
+  mutate(stand = as.factor(stand))
+battersReg1 <- lm(avgAtBats ~ ., data=plateAppearancesTotalFiltered)
+summary(battersReg1)
+```
+
+```{r}
+#first look at RMSE from this batters regression 1
+#line below changes NA values to 0 (as of now, this increases RMSE by ~10)
+#plateAppearancesTotalFiltered[is.na(plateAppearancesTotalFiltered)] <- 0
+obs <- plateAppearancesTotalFiltered$avgAtBats
+pred <- predict(battersReg1, plateAppearancesTotalFiltered)
+battersRMSE <- RMSE(pred, obs, na.rm=TRUE)
+battersRMSE
+```
+
+```{r}
+#first look at regression for pitchers' playing time
+#glimpse(battersFacedTotal)
+battersFacedTotallFiltered <- battersFacedTotal %>%
+  select(-pitcher, -totalAtBatsFaced)
+pitchersReg1 <- lm(avgAtBatsFaced ~ ., data=battersFacedTotallFiltered)
+summary(pitchersReg1)
+```
+
+```{r}
+#first look at RMSE from this pitchers regression 1
+#line below changes NA values to 0 (as of now, this increases RMSE by ~10)
+#battersFacedTotallFiltered[is.na(battersFacedTotallFiltered)] <- 0
+obs <- battersFacedTotallFiltered$avgAtBatsFaced
+pred <- predict(pitchersReg1, battersFacedTotallFiltered)
+pitchersRMSE <- RMSE(pred, obs, na.rm=TRUE)
+pitchersRMSE
+```
+
+##Ideas
+###could number of years played in last 3 years be meaningful?
+###need to use autoplot to assess normality, linearity, constant variance
+###make sure to check crPlots for transformations on individual predictors
+###need to limit predictors to less than 7 ideally
+###do this by checking significance, VIFs, and then model selection using best subset/AIC/BIC/PRESS/adj R^2
+
