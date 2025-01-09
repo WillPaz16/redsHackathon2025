@@ -61,4 +61,10 @@ notOBTotals <- eventTotalsPerBatter %>%
   group_by(game_year, batter) %>% 
   summarise(notOnBase = sum(count, na.rm = T), .groups = "drop")
 
+eventTotalsPerBatterWide <- eventTotalsPerBatter %>%
+  pivot_wider(
+    names_from = events,    # Column to create new column names
+    values_from = count    # Column to populate new columns with values
+  )
 
+print(eventTotalsPerBatterWide)
