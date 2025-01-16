@@ -1,0 +1,163 @@
+---
+title: "pitchersData"
+author: "Harrison Cradduck"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+## read in packages
+library(tidyverse)
+library(dplyr)
+library(caret)
+library(car)
+library(ggfortify)
+library(MASS)
+library(kableExtra)
+```
+
+```{r}
+## set working directory
+setwd("C:\\Users\\harri\\Downloads")
+```
+
+```{r}
+## read in data
+lahmanData <- read.csv("lahman_people.csv", header=TRUE)
+savantData <- read.csv("savant_data_2021_2023.csv", header=TRUE)
+head(lahmanData)
+head(savantData)
+```
+
+```{r}
+## select and wrangle data for pitchers
+lahmanPitchersData <- lahmanData %>%
+  mutate(throws = as.factor(throws),
+         debutYear = as.numeric(substr(debut, 1, 4)),
+         birthCountry = as.factor(birthCountry)) %>%
+  dplyr::select(-birthMonth, -birthDay, -birthDate, -bats, -debut, -playerID_LAHMAN) %>%
+  rename(playerMLBID = player_mlb_id) %>%
+  filter(playerMLBID != "")
+head(lahmanPitchersData)
+```
+
+```{r}
+## slim down data to pitcher-relevant columns
+savantPitchersVars <- savantData %>%
+  dplyr::select(pitch_type, release_speed:release_pos_y, pitcher:zone, p_throws, type, balls:plate_z, outs_when_up, vx0:az, effective_speed:game_pk, at_bat_number:pitch_name, bat_score, post_bat_score, spin_axis:delta_run_exp, sp_indicator:times_faced, -batter, -stand, -description, -game_type, -home_team, -away_team, -hit_location, -bb_type, -on_3b, -on_2b, -on_1b, -inning, -inning_topbot, -hc_x, -hc_y, -fielder_2, -sv_id, -sz_top, -sz_bot, -hit_distance_sc, -launch_speed, -launch_angle, -pitcher_1, -fielder_2_1, -fielder_3, -fielder_4, -fielder_5, -fielder_6, -fielder_7, -fielder_8, -fielder_9)
+
+## thoughts: pitch_number/pitch_number_appearance -> do we want the max? the avg?
+```
+
+```{r}
+## take averages for each pitcher by year of pitcher-relevant columns
+savantPitchersData <- savantPitchersVars %>%
+  group_by(
+      game_year,
+      pitcher,
+      game_pk,
+      at_bat_number
+  ) %>%
+  summarise(
+      #throws = first(p_throws),
+      sp_indicator = first(sp_indicator),
+      rp_indicator = first(rp_indicator),
+      across(where(is.numeric), ~ mean(.x, na.rm = TRUE), .names = "avg_{.col}")
+  ) %>%
+  ungroup() %>%
+  group_by(
+      game_year,
+      pitcher,
+      game_pk
+  ) %>%
+  summarise(
+      #throws = first(throws),
+      gameStart = max(sp_indicator, na.rm = TRUE),
+      gameRelief = max(rp_indicator, na.rm = TRUE),
+      battersFacedAsStarter = sum(sp_indicator, na.rm = TRUE),
+      battersFacedAsReliever = sum(rp_indicator, na.rm = TRUE),
+      across(starts_with("avg_"), ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  group_by(
+      game_year,
+      pitcher
+  ) %>%
+  summarise(
+      atBatsFaced = sum(battersFacedAsStarter + battersFacedAsReliever),
+      #throws = first(throws),
+      starts = sum(gameStart, na.rm = TRUE),
+      reliefs = sum(gameRelief, na.rm = TRUE),
+      battersFacedAsStarter = sum(battersFacedAsStarter, na.rm = TRUE),
+      battersFacedAsReliever = sum(battersFacedAsReliever, na.rm = TRUE),
+      across(starts_with("avg_"), ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  ungroup()
+head(savantPitchersData)
+```
+
+```{r}
+## transpose events into columns with counts
+eventsData <- savantPitchersVars %>%
+  group_by(game_year, pitcher, events) %>%
+  filter(events != "") %>%
+  summarise(count = n()) %>% 
+  pivot_wider(
+    names_from = events,
+    values_from = count,
+    values_fill = 0
+  ) %>%
+  ungroup()
+head(eventsData)
+```
+
+```{r}
+## transpose pitch_name into columns with counts
+pitchesData <- savantPitchersVars %>%
+  group_by(game_year, pitcher, pitch_name) %>%
+  filter(pitch_name != "") %>%
+  summarise(count = n()) %>% 
+  pivot_wider(
+    names_from = pitch_name,
+    values_from = count,
+    values_fill = 0
+  ) %>%
+  ungroup()
+head(pitchesData)
+```
+
+```{r}
+## combine events, pitches, and savant data
+savantPitchersData <- savantPitchersData %>%
+  left_join(eventsData, by = c("game_year", "pitcher")) %>%
+  left_join(pitchesData, by = c("game_year", "pitcher"))
+head(savantPitchersData)
+```
+
+```{r}
+## calculate averages and totals of pitcher-relevant columns for each pitcher
+totalPitchersData <- savantPitchersData %>%
+  group_by(pitcher) %>%
+  summarise(
+    avgAtBatsFaced = round(mean(atBatsFaced, na.rm = TRUE)),
+    across(where(is.integer) & !all_of("game_year"), ~ sum(.x, na.rm = TRUE), .names = "total_{.col}_pitched"),
+    across(starts_with("avg_"), ~ weighted.mean(.x, w = atBatsFaced, na.rm = TRUE), .names = "weighted_{.col}"),
+    yearsPitched = n_distinct(game_year)
+    ) %>%
+  rename(total_atBatsFaced = total_atBatsFaced_pitched, weighted_avg_balls_pitched = weighted_avg_balls, weighted_avg_strikes_pitched = weighted_avg_strikes, weighted_avg_bat_score_pitching = weighted_avg_bat_score, weighted_avg_post_bat_score_pitching = weighted_avg_post_bat_score, weighted_avg_delta_home_win_exp_pitching = weighted_avg_delta_home_win_exp, weighted_avg_delta_run_exp_pitching = weighted_avg_delta_run_exp, weighted_avg_times_faced_pitching = weighted_avg_times_faced) %>%
+  ungroup()
+head(totalPitchersData)
+```
+
+```{r}
+## combine savant and lahman data
+combinedPitchersData <- totalPitchersData %>%
+  left_join(lahmanPitchersData, by = c("pitcher" = "playerMLBID")) ## %>%
+  # filter(!is.na(birthYear)) ## filter out all players with no demographics data (is this okay?) NO, BENCHMARK SOLUTION SHOWS THESE PLAYERS
+head(combinedPitchersData)
+```
+
+
