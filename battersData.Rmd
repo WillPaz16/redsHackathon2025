@@ -1,0 +1,174 @@
+---
+title: "battersData"
+author: "Harrison Cradduck"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+## read in packages
+library(tidyverse)
+library(dplyr)
+library(caret)
+library(car)
+library(ggfortify)
+library(MASS)
+library(kableExtra)
+```
+
+```{r}
+## set working directory
+setwd("C:\\Users\\harri\\Downloads")
+```
+
+```{r}
+## read in data
+lahmanData <- read.csv("lahman_people.csv", header=TRUE)
+savantData <- read.csv("savant_data_2021_2023.csv", header=TRUE)
+head(lahmanData)
+head(savantData)
+```
+
+```{r}
+## select and wrangle data for batters
+lahmanBattersData <- lahmanData %>%
+  mutate(bats = as.factor(bats),
+         debutYear = as.numeric(substr(debut, 1, 4)),
+         birthCountry = as.factor(birthCountry)) %>%
+  dplyr::select(-birthMonth, -birthDay, -birthDate, -throws, -debut, -playerID_LAHMAN) %>%
+  rename(playerMLBID = player_mlb_id) %>%
+  filter(playerMLBID != "")
+head(lahmanBattersData)
+```
+
+```{r}
+## slim down data to batter-relevant columns
+savantBattersVars <- savantData %>%
+  dplyr::select(batter, events, stand, hit_location, balls, strikes, game_year, hc_x, hc_y, hit_distance_sc:launch_angle, game_pk, estimated_ba_using_speedangle:at_bat_number, bat_score, post_bat_score, delta_home_win_exp:delta_run_exp, times_faced, bb_type) %>%
+  mutate(launch_speed_angle = as.factor(launch_speed_angle))
+```
+
+```{r}
+## take averages for each batter by year of batter-relevant columns
+savantBattersData <- savantBattersVars %>%
+  group_by(
+      game_year,
+      batter,
+      game_pk,
+      at_bat_number
+  ) %>%
+  summarise(
+      #stand = first(stand),
+      across(where(is.numeric), ~ mean(.x, na.rm = TRUE), .names = "avg_{.col}")
+  ) %>%
+  ungroup() %>%
+  group_by(
+      game_year,
+      batter
+  ) %>%
+  summarise(
+      plateAppearances = n(),
+      #stand = first(stand),
+      across(starts_with("avg_"), ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  ungroup()
+head(savantBattersData)
+```
+
+```{r}
+## transpose events into columns with counts and create on base / not on base columns
+eventsData <- savantBattersVars %>%
+  group_by(game_year, batter, events) %>%
+  filter(events != "") %>%
+  summarise(count = n()) %>% 
+  pivot_wider(
+    names_from = events,
+    values_from = count,
+    values_fill = 0
+  ) %>%
+  ungroup() %>%
+  mutate(onBaseCount = single + double + triple + home_run + walk + hit_by_pitch + field_error + fielders_choice + catcher_interf,
+         notOnBaseCount = field_out + fielders_choice_out + force_out + grounded_into_double_play + other_out + sac_fly + strikeout + sac_fly_double_play + sac_bunt + strikeout_double_play + double_play + sac_bunt_double_play + triple_play)
+head(eventsData)
+```
+
+```{r}
+## transpose launch_speed_angle into columns with counts
+contactData <- savantBattersVars %>%
+  group_by(game_year, batter, launch_speed_angle) %>%
+  filter(!is.na(launch_speed_angle)) %>%
+  summarise(count = n()) %>% 
+  pivot_wider(
+    names_from = launch_speed_angle,
+    values_from = count,
+    values_fill = 0
+  ) %>%
+  ungroup()
+colnames(contactData) <- c("game_year", "batter", "weak", "topped", "under", "flare_burner", "solid_contact", "barrel")
+head(contactData)
+```
+
+```{r}
+## transpose bb_type into columns with counts
+playTypeData <- savantBattersVars %>%
+  group_by(game_year, batter, bb_type) %>%
+  filter(bb_type != "") %>%
+  summarise(count = n()) %>% 
+  pivot_wider(
+    names_from = bb_type,
+    values_from = count,
+    values_fill = 0
+  ) %>%
+  ungroup()
+head(playTypeData)
+```
+
+```{r}
+## combine events, contact, playType, and savant data
+savantBattersData <- savantBattersData %>%
+  left_join(eventsData, by = c("game_year", "batter")) %>%
+  left_join(contactData, by = c("game_year", "batter")) %>%
+  left_join(playTypeData, by = c("game_year", "batter"))
+head(savantBattersData)
+```
+
+```{r}
+## calculate averages and totals of batter-relevant columns for each batter
+totalBattersData <- savantBattersData %>%
+  group_by(batter) %>%
+  summarise(
+    avgPlateAppearances = round(mean(plateAppearances, na.rm = TRUE)),
+    across(where(is.integer) & !all_of("game_year"), ~ sum(.x, na.rm = TRUE), .names = "total_{.col}_batted"),
+    across(starts_with("avg_"), ~ weighted.mean(.x, w = plateAppearances, na.rm = TRUE), .names = "weighted_{.col}"),
+    yearsBatted = n_distinct(game_year),
+    ) %>%
+  rename(total_plateAppearances = total_plateAppearances_batted, weighted_avg_balls_batted = weighted_avg_balls, weighted_avg_strikes_batted = weighted_avg_strikes, weighted_avg_bat_score_batting = weighted_avg_bat_score, weighted_avg_post_bat_score_batting = weighted_avg_post_bat_score, weighted_avg_delta_home_win_exp_batting = weighted_avg_delta_home_win_exp, weighted_avg_delta_run_exp_batting = weighted_avg_delta_run_exp, weighted_avg_times_faced_batting = weighted_avg_times_faced) %>%
+  ungroup() %>%
+  mutate(across(everything(), ~ replace_na(.x, 0))) ## replace all NA values with 0 (makes sense)
+head(totalBattersData)
+```
+
+```{r}
+## create on base / slugging / on base + slugging percentages
+# totalBattersData <- totalBattersData %>%
+#   mutate(actualAtBats = plateAppearances - walk - hit_by_pitch - sac_bunt - sac_fly - catcher_interf,
+#          onBasePerc = (single + double + triple + home_run + walk + hit_by_pitch) / (actualAtBats + walk + hit_by_pitch + sac_fly),
+#          slugPerc = (single + 2*double + 3*triple + 4*home_run) / actualAtBats,
+#          onBasePlusSlugPerc = onBasePerc + slugPerc) %>%
+#   mutate(across(everything(), ~ replace_na(.x, 0))) ## replace all NA values with 0 (makes sense)
+# head(totalBattersData)
+```
+
+```{r}
+## combine savant and lahman data
+combinedBattersData <- totalBattersData %>%
+  left_join(lahmanBattersData, by = c("batter" = "playerMLBID")) ## %>%
+  # filter(!is.na(birthYear)) ## filter out all players with no demographics data (is this okay?) NO, BENCHMARK SOLUTION SHOWS THESE PLAYERS
+head(combinedBattersData)
+```
+
+
