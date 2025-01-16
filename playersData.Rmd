@@ -1,0 +1,88 @@
+---
+title: "playersData"
+author: "Harrison Cradduck"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+## select and wrangle data for all players
+lahmanPlayersData <- lahmanData %>%
+  mutate(bats = as.factor(bats),
+         throws = as.factor(throws),
+         debutYear = as.numeric(substr(debut, 1, 4)),
+         birthCountry = as.factor(birthCountry)) %>%
+  dplyr::select(-birthMonth, -birthDay, -birthDate, -debut, -playerID_LAHMAN) %>%
+  rename(playerMLBID = player_mlb_id) %>%
+  filter(playerMLBID != "")
+head(lahmanPlayersData)
+```
+
+```{r}
+## look at data frames
+head(totalBattersData)
+head(totalPitchersData)
+```
+
+```{r}
+# glimpse(totalBattersData)
+```
+
+```{r}
+# glimpse(totalPitchersData)
+```
+
+
+```{r}
+## combine batters and pitchers data, creating total playing time, with submission format
+playersData <- totalBattersData %>%
+  rename(PLAYER_ID = batter,
+         PLAYING_TIME = avgPlateAppearances
+         ) %>%
+  bind_rows(totalPitchersData %>%
+              rename(PLAYER_ID = pitcher,
+                     PLAYING_TIME = avgAtBatsFaced)
+    ) %>%
+  group_by(PLAYER_ID) %>%
+    summarise(
+        PLAYING_TIME = round(sum(PLAYING_TIME)),
+        across(where(is.integer), ~ sum(.x, na.rm = TRUE)),
+        across(where(is.double), ~ mean(.x, na.rm = TRUE)),
+    ) %>%
+    ungroup() %>%
+  dplyr::select(PLAYER_ID, PLAYING_TIME, total_plateAppearances, yearsBatted, total_atBatsFaced, yearsPitched, everything())
+head(playersData)
+```
+
+```{r}
+## read in sample submission csv
+sampleSubmission <- read.csv("sample_submission.csv", header=TRUE)
+```
+
+```{r}
+## check for discrepancies in playing time
+comparisons <- sampleSubmission %>%
+  left_join(playersData, by = c("PLAYER_ID"))
+head(comparisons)
+subset(comparisons, PLAYING_TIME.x != PLAYING_TIME.y)
+```
+
+```{r}
+## combine savant data and lahman data for all players
+allPlayersData <- playersData %>%
+  left_join(lahmanPlayersData, by = c("PLAYER_ID" = "playerMLBID"))
+## NA values present in this dataframe indicate that player never batted/pitched, or they don't have demographic data
+## the former are essentially zeros but do we need to change? the latter can't be zeros, so do we remove?
+head(allPlayersData)
+```
+
+```{r}
+## check about NAs in dataframe
+#colSums(is.na(allPlayersData))
+#view(subset(allPlayersData, rowSums(is.na(allPlayersData)) > 0))
+```
+
