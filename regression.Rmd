@@ -1,0 +1,162 @@
+---
+title: "regression"
+author: "Harrison Cradduck"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+## read in packages
+library(tidyverse)
+library(dplyr)
+library(caret)
+library(car)
+library(ggfortify)
+library(MASS)
+library(kableExtra)
+library(leaps)
+```
+
+```{r}
+allPlayersData <- allPlayersData %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), 0, .))) %>%
+  dplyr::select(-PLAYER_ID, -total_onBaseCount_batted, -total_notOnBaseCount_batted, - total_battersFacedAsReliever_pitched)
+head(allPlayersData)
+colSums(is.na(allPlayersData))
+```
+
+```{r}
+# glimpse(allPlayersData)
+```
+
+```{r}
+## run first MLR with all variables
+reg1 <- lm(PLAYING_TIME ~ ., data=allPlayersData)
+summary(reg1)
+```
+
+```{r}
+# vif(reg1)
+# alias(reg1)
+obs <- allPlayersData$PLAYING_TIME
+pred <- predict(reg1, allPlayersData)
+RMSE <- RMSE(pred, obs, na.rm=TRUE)
+RMSE
+```
+
+```{r}
+# null <- lm(PLAYING_TIME ~ 1, data=allPlayersData)
+# forwardAIC <- step(null, direction="forward", scope=list(upper=reg1))
+# backwardAIC <- step(reg1, direction="backward")
+# n <- dim(allPlayersData)[1]
+# forwardBIC <- step(null, direction="forward", scope=list(upper=reg1),k=log(n))
+# backwardBIC <- step(reg1, direction="backward",k=log(n))
+# stepwiseAIC <- step(null, scope = list(lower = null, upper = reg1), direction = "both")
+# stepwiseBIC <- step(null_model, scope = list(lower = null, upper = reg1), direction = "both", k = log(n))
+```
+
+```{r}
+extract_stats <- function(model) {
+  f_stat <- summary(model)$fstatistic[1]
+  rse <- summary(model)$sigma
+  r_squared <- summary(model)$r.squared
+  adj_r_squared <- summary(model)$adj.r.squared
+  rmse <- sqrt(mean(residuals(model)^2))
+  return(list(F_stat = f_stat, RSE = rse, R_squared = r_squared, Adj_R_squared = adj_r_squared, RMSE = rmse))
+}
+
+stats_forwardAIC <- extract_stats(forwardAIC)
+stats_backwardAIC <- extract_stats(backwardAIC)
+stats_forwardBIC <- extract_stats(forwardBIC)
+stats_backwardBIC <- extract_stats(backwardBIC)
+stats_stepwiseAIC <- extract_stats(stepwiseAIC)
+stats_stepwiseBIC <- extract_stats(stepwiseBIC)
+
+model_summary <- data.frame(
+  Method = c(
+    "Forward Elimination (AIC)", 
+    "Backward Elimination (AIC)", 
+    "Forward Elimination (BIC)", 
+    "Backward Elimination (BIC)",
+    "Stepwise Elimination (AIC)",
+    "Stepwise Elimination (BIC)"
+  ),
+  # Variables_Selected = c(
+  #   paste(names(coef(forwardAIC))[-1], collapse = ", "),
+  #   paste(names(coef(backwardAIC))[-1], collapse = ", "),
+  #   paste(names(coef(forwardBIC))[-1], collapse = ", "),
+  #   paste(names(coef(backwardBIC))[-1], collapse = ", ")
+  # ),
+  AIC = c(AIC(forwardAIC), AIC(backwardAIC), AIC(forwardBIC), AIC(backwardBIC), AIC(stepwiseAIC), AIC(stepwiseBIC)),
+  BIC = c(BIC(forwardAIC), BIC(backwardAIC), BIC(forwardBIC), BIC(backwardBIC), AIC(stepwiseAIC), AIC(stepwiseBIC)),
+  RMSE = c(stats_forwardAIC$RMSE, stats_backwardAIC$RMSE, stats_forwardBIC$RMSE, stats_backwardBIC$RMSE, stats_stepwiseAIC$RMSE, stats_stepwiseBIC$RMSE),
+  RSE = c(stats_forwardAIC$RSE, stats_backwardAIC$RSE, stats_forwardBIC$RSE, stats_backwardBIC$RSE, stats_stepwiseAIC$RSE, stats_stepwiseBIC$RSE),
+  R_squared = c(stats_forwardAIC$R_squared, stats_backwardAIC$R_squared, stats_forwardBIC$R_squared, stats_backwardBIC$R_squared, stats_stepwiseAIC$R_squared, stats_stepwiseBIC$R_squared),
+  Adj_R_squared = c(stats_forwardAIC$Adj_R_squared, stats_backwardAIC$Adj_R_squared, stats_forwardBIC$Adj_R_squared, stats_backwardBIC$Adj_R_squared, stats_stepwiseAIC$Adj_R_squared, stats_stepwiseBIC$Adj_R_squared)
+)
+
+model_summary %>%
+  kable("html", caption = "Summary of Variable Selection Methods and Results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  column_spec(2, width = "40em")
+```
+
+```{r}
+remove_high_vif_and_insignificant <- function(model, vif_threshold = 2, p_value_threshold = 0.01) {
+  while (TRUE) {
+    # Calculate VIF values, excluding intercept
+    vif_values <- vif(model)
+    vif_values <- vif_values[!names(vif_values) %in% "(Intercept)"]  # Exclude intercept
+
+    # Find the maximum VIF value
+    max_vif <- max(vif_values, na.rm = TRUE)
+    
+    # Check variable significance, excluding intercept
+    p_values <- coef(summary(model))[, "Pr(>|t|)"]
+    p_values <- p_values[!names(p_values) %in% "(Intercept)"]  # Exclude intercept
+    insignificant_vars <- names(p_values[p_values > p_value_threshold])
+
+    # Check if any variable has a high VIF or is insignificant
+    if (max_vif < vif_threshold && length(insignificant_vars) == 0) {
+      break
+    }
+
+    if (max_vif >= vif_threshold) {
+      # Remove the variable with the highest VIF
+      variable_to_remove <- names(which.max(vif_values))
+      cat("Removing variable with high VIF:", variable_to_remove, "(", max_vif, ")\n")
+    } else if (length(insignificant_vars) > 0) {
+      # Remove the least significant variable (highest p-value)
+      variable_to_remove <- insignificant_vars[which.max(p_values[insignificant_vars])]
+      cat("Removing insignificant variable:", variable_to_remove, "(p =", p_values[variable_to_remove], ")\n")
+    }
+
+    # Update the formula by excluding the variable
+    current_formula <- formula(model)
+    updated_formula <- update(current_formula, paste(". ~ . -", variable_to_remove))
+    
+    # Refit the model without the variable
+    model <- lm(updated_formula, data = model$model)
+  }
+  
+  # Return the final model
+  return(model)
+}
+
+# Example usage
+final_model <- remove_high_vif_and_insignificant(
+  lm(PLAYING_TIME ~ ., data = allPlayersData),
+  vif_threshold = 3,
+  p_value_threshold = 0.01
+)
+
+# Check the summary of the final model
+summary(final_model)
+vif(final_model)
+```
+
+
