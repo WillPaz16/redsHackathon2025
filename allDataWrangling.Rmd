@@ -22,15 +22,15 @@ library(kableExtra)
 
 ```{r}
 ## set working directory
-setwd("C:\\Users\\harri\\OneDrive\\Independent Work\\Reds Hackathon")
+# setwd("C:\\Users\\harri\\OneDrive\\Independent Work\\Reds Hackathon")
 ```
 
 ```{r}
 ## read in data
-lahmanData <- read.csv("lahman_people.csv", header=TRUE)
-savantData <- read.csv("savant_data_2021_2023.csv", header=TRUE)
-head(lahmanData)
-head(savantData)
+# lahmanData <- read.csv("lahman_people.csv", header=TRUE)
+# savantData <- read.csv("savant_data_2021_2023.csv", header=TRUE)
+# head(lahmanData)
+# head(savantData)
 ```
 
 # Batters Data Wrangling
@@ -378,5 +378,6 @@ head(allPlayersData)
 
 ```{r}
 colSums(is.na(allPlayersData))
+write.csv(allPlayersData, "allPlayersData.csv")
 ```
 

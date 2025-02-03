@@ -22,9 +22,10 @@ library(leaps)
 ```
 
 ```{r}
+allPlayersData <- read_csv("allPlayersData.csv")
 allPlayersData <- allPlayersData %>%
   mutate(across(everything(), ~ ifelse(is.na(.), 0, .))) %>%
-  dplyr::select(-PLAYER_ID, -total_onBaseCount_batted, -total_notOnBaseCount_batted, - total_battersFacedAsReliever_pitched)
+  dplyr::select(-PLAYER_ID)
 head(allPlayersData)
 colSums(is.na(allPlayersData))
 ```
@@ -35,28 +36,28 @@ colSums(is.na(allPlayersData))
 
 ```{r}
 ## run first MLR with all variables
-reg1 <- lm(PLAYING_TIME ~ ., data=allPlayersData)
+reg1 <- lm(AVG_PLAYING_TIME ~ ., data=allPlayersData)
 summary(reg1)
 ```
 
 ```{r}
 # vif(reg1)
 # alias(reg1)
-obs <- allPlayersData$PLAYING_TIME
+obs <- allPlayersData$AVG_PLAYING_TIME
 pred <- predict(reg1, allPlayersData)
 RMSE <- RMSE(pred, obs, na.rm=TRUE)
 RMSE
 ```
 
 ```{r}
-# null <- lm(PLAYING_TIME ~ 1, data=allPlayersData)
+# null <- lm(AVG_PLAYING_TIME ~ 1, data=allPlayersData)
 # forwardAIC <- step(null, direction="forward", scope=list(upper=reg1))
 # backwardAIC <- step(reg1, direction="backward")
 # n <- dim(allPlayersData)[1]
 # forwardBIC <- step(null, direction="forward", scope=list(upper=reg1),k=log(n))
 # backwardBIC <- step(reg1, direction="backward",k=log(n))
 # stepwiseAIC <- step(null, scope = list(lower = null, upper = reg1), direction = "both")
-# stepwiseBIC <- step(null_model, scope = list(lower = null, upper = reg1), direction = "both", k = log(n))
+# stepwiseBIC <- step(null, scope = list(lower = null, upper = reg1), direction = "both", k = log(n))
 ```
 
 ```{r}
@@ -106,57 +107,89 @@ model_summary %>%
 ```
 
 ```{r}
-remove_high_vif_and_insignificant <- function(model, vif_threshold = 2, p_value_threshold = 0.01) {
-  while (TRUE) {
-    # Calculate VIF values, excluding intercept
-    vif_values <- vif(model)
-    vif_values <- vif_values[!names(vif_values) %in% "(Intercept)"]  # Exclude intercept
+summary(backwardAIC)
+```
 
-    # Find the maximum VIF value
-    max_vif <- max(vif_values, na.rm = TRUE)
-    
-    # Check variable significance, excluding intercept
-    p_values <- coef(summary(model))[, "Pr(>|t|)"]
-    p_values <- p_values[!names(p_values) %in% "(Intercept)"]  # Exclude intercept
-    insignificant_vars <- names(p_values[p_values > p_value_threshold])
+```{r}
+# remove_high_vif_and_insignificant <- function(model, vif_threshold = 3, p_value_threshold = 0.01) {
+#   # Step 1: Check for aliasing
+#   aliased <- alias(model)$Complete
+#   if (nrow(aliased) > 0) {
+#     print("Aliased coefficients detected:")
+#     print(aliased)
+#     # Remove aliased variables
+#     model <- update(model, . ~ . - aliased$`(Intercept)`)
+#   }
+# 
+#   # Step 2: Calculate VIFs
+#   vif_values <- vif(model)
+#   high_vif_vars <- names(vif_values)[vif_values > vif_threshold]
+#   
+#   if (length(high_vif_vars) > 0) {
+#     print(paste("Removing predictors with VIF > ", vif_threshold))
+#     print(high_vif_vars)
+#     model <- update(model, . ~ . - high_vif_vars)
+#   }
+# 
+#   # Step 3: Check p-values and remove insignificant variables
+#   summary_model <- summary(model)
+#   p_values <- summary_model$coefficients[, 4]
+#   insignificant_vars <- names(p_values)[p_values > p_value_threshold]
+#   
+#   if (length(insignificant_vars) > 0) {
+#     print(paste("Removing predictors with p-value > ", p_value_threshold))
+#     print(insignificant_vars)
+#     model <- update(model, . ~ . - insignificant_vars)
+#   }
+#   
+#   # Return the final model
+#   return(model)
+# }
+# 
+# # Usage
+# final_model <- remove_high_vif_and_insignificant(
+#   backwardAIC,
+#   vif_threshold = 3,
+#   p_value_threshold = 0.01
+# )
+# 
+# final_model <- alias(backwardAIC)
+```
 
-    # Check if any variable has a high VIF or is insignificant
-    if (max_vif < vif_threshold && length(insignificant_vars) == 0) {
-      break
-    }
+```{r}
+# Removing the insignificant variables (p-value > 0.01) first
+significant_model <- lm(AVG_PLAYING_TIME ~ weighted_avg_hit_location_batted +
+  weighted_avg_iso_value_batted + weighted_avg_max_times_faced_batted + 
+  weighted_avg_max_pitches_thrown_pitched + weighted_avg_release_speed_pitched + 
+  weighted_avg_pfx_z_pitched + weighted_avg_vz0_pitched + 
+  weighted_avg_delta_run_exp_pitched + total_field_out_batted + 
+  total_force_out_batted + total_single_batted + total_strikeout_batted + 
+  total_walk_batted + total_at_bats_faced_as_starter_pitched + 
+  total_field_out_pitched + total_single_pitched + total_strikeout_pitched + 
+  total_walk_pitched + total_pickoff_3b_pitched + 
+  total_pickoff_caught_stealing_home_pitched + total_Curveball_pitched + 
+  total_Changeup_pitched + `total_Split-Finger_pitched` + total_Forkball_pitched + 
+  birthYear + debutYear, data = allPlayersData)
 
-    if (max_vif >= vif_threshold) {
-      # Remove the variable with the highest VIF
-      variable_to_remove <- names(which.max(vif_values))
-      cat("Removing variable with high VIF:", variable_to_remove, "(", max_vif, ")\n")
-    } else if (length(insignificant_vars) > 0) {
-      # Remove the least significant variable (highest p-value)
-      variable_to_remove <- insignificant_vars[which.max(p_values[insignificant_vars])]
-      cat("Removing insignificant variable:", variable_to_remove, "(p =", p_values[variable_to_remove], ")\n")
-    }
+# Calculate VIF for the significant variables
+library(car)
+vif_values <- vif(significant_model)
 
-    # Update the formula by excluding the variable
-    current_formula <- formula(model)
-    updated_formula <- update(current_formula, paste(". ~ . -", variable_to_remove))
-    
-    # Refit the model without the variable
-    model <- lm(updated_formula, data = model$model)
-  }
-  
-  # Return the final model
-  return(model)
-}
+# Identify the variables with VIF > 3
+high_vif_vars <- names(vif_values)[vif_values > 3]
 
-# Example usage
-final_model <- remove_high_vif_and_insignificant(
-  lm(PLAYING_TIME ~ ., data = allPlayersData),
-  vif_threshold = 3,
-  p_value_threshold = 0.01
-)
+# Remove high VIF variables
+final_model <- update(significant_model, . ~ . - high_vif_vars)
 
-# Check the summary of the final model
+# View the final model summary
 summary(final_model)
 vif(final_model)
+```
+```{r}
+obs <- allPlayersData$AVG_PLAYING_TIME
+pred <- predict(backwardAIC, allPlayersData)
+RMSE <- RMSE(pred, obs, na.rm=TRUE)
+RMSE
 ```
 
 
