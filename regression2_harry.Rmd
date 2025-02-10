@@ -25,7 +25,7 @@ library(leaps)
 # read in csv and assess NA values
 allPlayersData <- read_csv("allPlayersData.csv")
 allPlayersData <- allPlayersData %>%
-  # filter(!is.na(birthYear)) %>%
+  filter(!is.na(birthYear)) %>%
   dplyr::select(-PLAYER_ID, -TOTAL_PLAYING_TIME)
 head(allPlayersData)
 # colSums(is.na(allPlayersData))
@@ -47,7 +47,7 @@ RMSE
 ```{r}
 # null <- lm(AVG_PLAYING_TIME ~ 1, data=allPlayersData)
 # forwardAIC <- step(null, direction="forward", scope=list(upper=reg1))
-# backwardAIC <- step(reg1, direction="backward")
+backwardAIC <- step(reg1, direction="backward")
 # n <- dim(allPlayersData)[1]
 # forwardBIC <- step(null, direction="forward", scope=list(upper=reg1),k=log(n))
 # backwardBIC <- step(reg1, direction="backward",k=log(n))
@@ -240,7 +240,7 @@ RMSE
 ```{r}
 # null <- lm(AVG_PLAYING_TIME ~ 1, data=allPlayersDataNAsZeros)
 # forwardAIC <- step(null, direction="forward", scope=list(upper=reg2))
-# backwardAIC <- step(reg2, direction="backward")
+backwardAIC <- step(reg2, direction="backward")
 # n <- dim(allPlayersDataNAsZeros)[1]
 # forwardBIC <- step(null, direction="forward", scope=list(upper=reg2),k=log(n))
 # backwardBIC <- step(reg2, direction="backward",k=log(n))
@@ -469,3 +469,109 @@ autoplot(insig_then_vif_NAs_zeros_significant_model)
 
 
 **Pick a model to move forward with, talk about it, tweak it if needed, talk about adding variables back and seeing significance?, then begin to visualize relationship between predictors and AVG_PLAYING_TIME**
+
+```{r}
+allPlayersData <- read_csv("allPlayersData.csv")
+allPlayersData <- allPlayersData %>%
+  filter(!is.na(birthYear)) %>%
+  dplyr::select(-PLAYER_ID, -TOTAL_PLAYING_TIME)
+# head(allPlayersData)
+```
+
+
+```{r}
+library(caret)
+set.seed(123)
+train_index <- createDataPartition(allPlayersData$AVG_PLAYING_TIME, p = 0.8, list = FALSE)
+train_data <- allPlayersData[train_index, ]
+test_data <- allPlayersData[-train_index, ]
+
+# Define k-fold cross-validation settings (k = 5)
+k <- 10
+train_control <- trainControl(method = "cv", number = k)
+
+# Fit initial full regression model
+reg1 <- lm(AVG_PLAYING_TIME ~ ., data = allPlayersData)
+
+# Stepwise selection using AIC
+backwardAIC <- step(reg1, direction = "backward")
+backwardAICRemoveObs <- backwardAIC  # Store final AIC model
+
+# Stepwise selection using BIC
+null <- lm(AVG_PLAYING_TIME ~ 1, data = allPlayersData)  # Null model
+stepwiseBIC <- step(null, 
+                    scope = list(lower = null, upper = backwardAICRemoveObs), 
+                    direction = "both", 
+                    k = log(nrow(allPlayersData)))  # BIC penalty
+
+# Function to extract model performance metrics
+extract_stats <- function(model, data) {
+  model_summary <- summary(model)
+  f_stat <- model_summary$fstatistic[1]  # F-statistic
+  rse <- model_summary$sigma  # Residual Standard Error (RSE)
+  r_squared <- model_summary$r.squared  # R-squared
+  adj_r_squared <- model_summary$adj.r.squared  # Adjusted R-squared
+  rmse <- sqrt(mean(residuals(model)^2))  # RMSE
+  num_predictors <- length(coef(model)) - 1  # Number of predictors (excluding intercept)
+
+  # Perform k-fold CV for RMSE estimation
+  cv_model <- train(AVG_PLAYING_TIME ~ ., 
+                    data = data, 
+                    method = "lm", 
+                    trControl = train_control)
+  cv_rmse <- mean(cv_model$resample$RMSE)  # Average RMSE from cross-validation
+
+  return(data.frame(F_Stat = f_stat, RSE = rse, R_Squared = r_squared, 
+                    Adj_R_Squared = adj_r_squared, RMSE = rmse, 
+                    CV_RMSE = cv_rmse,  # New metric from k-fold CV
+                    Num_Predictors = num_predictors))
+}
+
+# Extract statistics for both models using cross-validation
+backwardAICRemoveObsstats <- extract_stats(backwardAICRemoveObs, allPlayersData)
+stepwiseBICstats <- extract_stats(stepwiseBIC, allPlayersData)
+
+# Combine results into a comparison table
+model_comparison <- bind_rows(
+  stepwiseBICstats, backwardAICRemoveObsstats,
+  .id = "Model"
+)
+
+model_comparison$Model <- c("Stepwise BIC", "Backward AIC")
+
+# Display results as a styled HTML table
+model_comparison %>%
+  kable("html", caption = "Model Comparison with Cross-Validation") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Print summary of best model
+summary(stepwiseBIC)
+```
+
+```{r}
+new_formula <- update(stepwiseBIC, . ~ . -total_Forkball_pitched - total_field_out_batted - total_field_out_pitched - weighted_avg_max_times_faced_batted - total_single_pitched)
+stepwiseBIC_updated <- lm(new_formula, data = allPlayersData)
+summary(stepwiseBIC_updated)
+vif(stepwiseBIC_updated)
+```
+
+```{r}
+obs <- allPlayersData$AVG_PLAYING_TIME
+pred <- predict(stepwiseBIC_updated, allPlayersData)
+RMSE <- RMSE(pred, obs, na.rm=TRUE)
+RMSE
+```
+
+```{r}
+# Assuming allPlayersData is your data frame
+library(ggplot2)
+
+# Create the scatter plot
+ggplot(allPlayersData, aes(x = total_strikeout_batted, y = AVG_PLAYING_TIME)) +
+  geom_point(color = "blue") +
+  labs(title = "Scatter Plot of AVG_PLAYING_TIME vs total_strikeout_batted                     ",
+       x = "total_strikeout_batted                     ",
+       y = "Average Playing Time") +
+  theme_minimal()
+```
+
