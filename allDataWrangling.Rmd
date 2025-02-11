@@ -21,14 +21,9 @@ library(kableExtra)
 ```
 
 ```{r}
-## set working directory
-# setwd("C:\\Users\\harri\\OneDrive\\Independent Work\\Reds Hackathon")
-```
-
-```{r}
 ## read in data
-# lahmanData <- read.csv("lahman_people.csv", header=TRUE)
-# savantData <- read.csv("savant_data_2021_2023.csv", header=TRUE)
+lahmanData <- read.csv("lahman_people.csv", header=TRUE)
+savantData <- read.csv("savant_data_2021_2023.csv", header=TRUE)
 # head(lahmanData)
 # head(savantData)
 ```
@@ -42,7 +37,7 @@ lahmanBattersData <- lahmanData %>%
          debutYear = as.numeric(substr(debut, 1, 4)),
          birthCountry = as.factor(birthCountry)) %>%
   dplyr::select(-birthMonth, -birthDay, -birthDate, -throws, -debut, -playerID_LAHMAN) %>%
-  rename(playerMLBID = player_mlb_id) %>%
+  dplyr::rename(playerMLBID = player_mlb_id) %>%
   filter(playerMLBID != "")
 head(lahmanBattersData)
 ```
@@ -59,7 +54,7 @@ savantBattersVars <- savantData %>%
 eventsData <- savantBattersVars %>%
   group_by(game_year, batter, events) %>%
   filter(events != "") %>%
-  summarise(count = n()) %>% 
+  summarise(count = n()) %>%
   pivot_wider(
     names_from = events,
     values_from = count,
@@ -331,8 +326,8 @@ playersYearData <- savantBattersData_labeled %>%
     across(where(is.double), ~ mean(.x, na.rm = TRUE)),
   ) %>%
   ungroup() %>%
-  dplyr::select(PLAYER_ID, game_year, PLAYING_TIME, everything()) %>%
-  filter(!(atBatsFaced_pitched != 0 & plateAppearances_batted != 0 & atBatsFaced_pitched >= plateAppearances_batted & PLAYER_ID != "18396fcf5f98aac97ec6127f7924868d3ef7bd9e"))
+  dplyr::select(PLAYER_ID, game_year, PLAYING_TIME, everything())# %>%
+  # filter(!(atBatsFaced_pitched != 0 & plateAppearances_batted != 0 & atBatsFaced_pitched >= plateAppearances_batted & PLAYER_ID != "18396fcf5f98aac97ec6127f7924868d3ef7bd9e"))
 head(playersYearData)
 ```
 
@@ -350,8 +345,8 @@ playersTotalsData <- playersYearData %>%
     across(where(is.integer), ~ sum(.x, na.rm = TRUE), .names = "total_{.col}")
   ) %>%
   ungroup() %>%
-  dplyr::select(-total_plateAppearances_batted, -total_atBatsFaced_pitched, -total_TOTAL_PLAYING_TIME, -total_game_year) %>%
-  dplyr::select(PLAYER_ID, TOTAL_PLAYING_TIME, AVG_PLAYING_TIME, plateAppearances_batted, atBatsFaced_pitched, everything())
+  dplyr::select(-total_plateAppearances_batted, -total_atBatsFaced_pitched, -total_TOTAL_PLAYING_TIME, -total_game_year, -TOTAL_PLAYING_TIME) %>%
+  dplyr::select(PLAYER_ID, AVG_PLAYING_TIME, plateAppearances_batted, atBatsFaced_pitched, everything())
 
 head(playersTotalsData)
 ```
@@ -361,23 +356,13 @@ head(playersTotalsData)
 ## combine savant data and lahman data for all players
 allPlayersData <- playersTotalsData %>%
   left_join(lahmanPlayersData, by = c("PLAYER_ID" = "playerMLBID")) %>%
-  # filter(!is.na(birthYear))
   mutate(across(ends_with("_batted") | ends_with("_pitched"), ~ replace_na(.x, 0)))
-## NA values present in this dataframe indicate that player never batted/pitched, or they don't have demographic data
-## the former are essentially zeros but do we need to change? the latter can't be zeros, so do we remove?
 head(allPlayersData)
 ```
 
-```{r}
-# filtering out knuckleballs
-allPlayersData <- allPlayersData %>%
-  filter(!(total_Knuckleball_pitched >= 1 & total_Knuckleball_pitched <= 50)) #%>%
-  # filter(!is.na(birthYear))
-head(allPlayersData)
-```
 
 ```{r}
-colSums(is.na(allPlayersData))
+# colSums(is.na(allPlayersData))
 write.csv(allPlayersData, "allPlayersData.csv")
 ```
 
