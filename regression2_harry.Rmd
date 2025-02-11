@@ -24,31 +24,28 @@ library(leaps)
 ```{r}
 # read in csv and assess NA values
 allPlayersData <- read_csv("allPlayersData.csv")
-allPlayersData <- allPlayersData %>%
-  filter(!is.na(birthYear)) %>%
-  dplyr::select(-PLAYER_ID, -TOTAL_PLAYING_TIME)
-head(allPlayersData)
-# colSums(is.na(allPlayersData))
+allPlayersDataFiltered <- allPlayersData %>%
+  dplyr::select(-weight, -height, -birthYear, -debutYear, -birthCountry, -bats, -throws) %>% 
+  dplyr::select(-total_Forkball_pitched, -total_Knuckleball_pitched, -atBatsFaced_pitched, -plateAppearances_batted)
+head(allPlayersDataFiltered)
 ```
 
 ```{r}
 ## run first MLR with all variables
-reg1 <- lm(AVG_PLAYING_TIME ~ ., data=allPlayersData)
-summary(reg1)
-```
+reg1 <- lm(AVG_PLAYING_TIME ~ ., data=allPlayersDataFiltered)
+# summary(reg1)
 
-```{r}
-obs <- allPlayersData$AVG_PLAYING_TIME
-pred <- predict(reg1, allPlayersData)
+obs <- allPlayersDataFiltered$AVG_PLAYING_TIME
+pred <- predict(reg1, allPlayersDataFiltered)
 RMSE <- RMSE(pred, obs, na.rm=TRUE)
 RMSE
 ```
 
 ```{r}
-# null <- lm(AVG_PLAYING_TIME ~ 1, data=allPlayersData)
+# null <- lm(AVG_PLAYING_TIME ~ 1, data=allPlayersDataFiltered)
 # forwardAIC <- step(null, direction="forward", scope=list(upper=reg1))
-backwardAIC <- step(reg1, direction="backward")
-# n <- dim(allPlayersData)[1]
+# backwardAIC <- step(reg1, direction="backward")
+# n <- dim(allPlayersDataFiltered)[1]
 # forwardBIC <- step(null, direction="forward", scope=list(upper=reg1),k=log(n))
 # backwardBIC <- step(reg1, direction="backward",k=log(n))
 # stepwiseAIC <- step(null, scope = list(lower = null, upper = reg1), direction = "both")
@@ -116,30 +113,31 @@ best_models
 
 ```{r}
 # view best model
-backwardAICRemoveObs <- backwardAIC
-summary(backwardAICRemoveObs)
+summary(backwardAIC)
 ```
 
 
 ```{r}
-# process of removing predictors from backwardAIC model
-significant_model <- lm(AVG_PLAYING_TIME ~ weighted_avg_hit_distance_sc_batted + 
-    weighted_avg_iso_value_batted + weighted_avg_max_times_faced_batted + 
-    weighted_avg_max_pitches_thrown_pitched + weighted_avg_release_speed_pitched + 
-    weighted_avg_pfx_z_pitched + weighted_avg_vy0_pitched + weighted_avg_ay_pitched + 
-    weighted_avg_az_pitched + weighted_avg_release_spin_rate_pitched + 
-    weighted_avg_delta_run_exp_pitched + total_field_out_batted + 
-    total_force_out_batted + total_single_batted + total_strikeout_batted + 
-    total_walk_batted + total_caught_stealing_2b_batted + total_at_bats_faced_as_starter_pitched + 
-    total_double_pitched + total_field_out_pitched + total_single_pitched + 
-    total_strikeout_pitched + total_walk_pitched + total_triple_pitched + 
-    total_sac_fly_double_play_pitched + total_triple_play_pitched + 
-    total_pickoff_3b_pitched + total_pickoff_1b_pitched + `total_4-Seam Fastball_pitched` + 
-    total_Cutter_pitched + total_Sinker_pitched + total_Slider_pitched + 
-    `total_Knuckle Curve_pitched` + total_Sweeper_pitched + total_Forkball_pitched + 
-    debutYear, data = allPlayersData)
+# # process of removing predictors from backwardAIC model
+new_formula <- update(backwardAIC, . ~ . -...1 -weighted_avg_effective_speed_pitched -total_pickoff_caught_stealing_2b_pitched -total_sac_bunt_double_play_pitched -total_at_bats_faced_as_starter_pitched -total_sac_bunt_double_play_batted -weighted_avg_pfx_z_pitched -total_field_out_batted -weighted_avg_hit_location_batted -weighted_avg_vy0_pitched -total_single_batted -total_double_pitched -weighted_avg_iso_value_batted)
+backwardAIC_updated <- lm(new_formula, data = allPlayersDataFiltered)
+# significant_model <- lm(AVG_PLAYING_TIME ~ weighted_avg_hit_distance_sc_batted +
+#     weighted_avg_iso_value_batted + weighted_avg_max_times_faced_batted +
+#     weighted_avg_max_pitches_thrown_pitched + weighted_avg_release_speed_pitched +
+#     weighted_avg_pfx_z_pitched + weighted_avg_vy0_pitched + weighted_avg_ay_pitched +
+#     weighted_avg_az_pitched + weighted_avg_release_spin_rate_pitched +
+#     weighted_avg_delta_run_exp_pitched + total_field_out_batted +
+#     total_force_out_batted + total_single_batted + total_strikeout_batted +
+#     total_walk_batted + total_caught_stealing_2b_batted + total_at_bats_faced_as_starter_pitched +
+#     total_double_pitched + total_field_out_pitched + total_single_pitched +
+#     total_strikeout_pitched + total_walk_pitched + total_triple_pitched +
+#     total_sac_fly_double_play_pitched + total_triple_play_pitched +
+#     total_pickoff_3b_pitched + total_pickoff_1b_pitched + `total_4-Seam Fastball_pitched` +
+#     total_Cutter_pitched + total_Sinker_pitched + total_Slider_pitched +
+#     `total_Knuckle Curve_pitched` + total_Sweeper_pitched + total_Forkball_pitched +
+#     debutYear, data = allPlayersData)
 
-model_summary <- summary(significant_model)
+model_summary <- summary(backwardAIC_updated)
 
 p_values <- model_summary$coefficients[, "Pr(>|t|)"][-1]  # Remove intercept
 
@@ -151,7 +149,7 @@ cat("Least significant variable:", least_significant_var, "\n")
 cat("P-value:", highest_p_value, "\n")
 
 # Calculate VIF for all predictors
-vif_values <- vif(significant_model)
+vif_values <- vif(backwardAIC_updated)
 
 # Identify the variable with the highest VIF
 highest_vif_var <- names(which.max(vif_values))
@@ -161,351 +159,38 @@ highest_vif_value <- max(vif_values)
 cat("Variable with the highest VIF:", highest_vif_var, "\n")
 cat("VIF value:", highest_vif_value, "\n")
 
-vif(significant_model)
-summary(significant_model)
-```
-
-
-```{r}
-# removing the high vifs first then insignificant variables
-vif_then_insig_removing_obs_significant_model <- lm(AVG_PLAYING_TIME ~ - weighted_avg_hit_distance_sc_batted + 
-    weighted_avg_iso_value_batted - weighted_avg_max_times_faced_batted + 
-    weighted_avg_max_pitches_thrown_pitched - weighted_avg_release_speed_pitched + 
-    weighted_avg_pfx_z_pitched - weighted_avg_vy0_pitched - weighted_avg_ay_pitched - 
-    weighted_avg_az_pitched - weighted_avg_release_spin_rate_pitched + 
-    weighted_avg_delta_run_exp_pitched - total_field_out_batted + 
-    total_force_out_batted - total_single_batted - total_strikeout_batted + 
-    total_walk_batted + total_caught_stealing_2b_batted - total_at_bats_faced_as_starter_pitched - 
-    total_double_pitched - total_field_out_pitched - total_single_pitched - 
-    total_strikeout_pitched - total_walk_pitched + total_triple_pitched - 
-    total_sac_fly_double_play_pitched - total_triple_play_pitched - 
-    total_pickoff_3b_pitched - total_pickoff_1b_pitched + `total_4-Seam Fastball_pitched` + 
-    total_Cutter_pitched + total_Sinker_pitched + total_Slider_pitched - 
-    `total_Knuckle Curve_pitched` - total_Sweeper_pitched + total_Forkball_pitched + 
-    debutYear, data = allPlayersData)
-
-summary(vif_then_insig_removing_obs_significant_model)
-
-# list of variables with p-value < 0.01 and VIFs under 3.8: weighted_avg_iso_value_batted, weighted_avg_max_pitches_thrown_pitched, weighted_avg_pfx_z_pitched, weighted_avg_delta_run_exp_pitched, total_force_out_batted, total_walk_batted, total_caught_stealing_2b_batted, total_triple_pitched, `total_4-Seam Fastball_pitched`,  total_Cutter_pitched, total_Sinker_pitched, total_Forkball_pitched, debutYear
-
-obs <- allPlayersData$AVG_PLAYING_TIME
-pred <- predict(vif_then_insig_removing_obs_significant_model, allPlayersData)
-RMSE <- RMSE(pred, obs, na.rm=TRUE)
-RMSE
+vif(backwardAIC_updated)
+summary(backwardAIC_updated)
 ```
 
 ```{r}
-# removing the insignificant variables first then high vifs
-insig_then_vif_removing_obs_significant_model <- lm(AVG_PLAYING_TIME ~ weighted_avg_hit_distance_sc_batted + 
-    weighted_avg_iso_value_batted - weighted_avg_max_times_faced_batted + 
-    weighted_avg_max_pitches_thrown_pitched - weighted_avg_release_speed_pitched + 
-    weighted_avg_pfx_z_pitched - weighted_avg_vy0_pitched - weighted_avg_ay_pitched - 
-    weighted_avg_az_pitched - weighted_avg_release_spin_rate_pitched + 
-    weighted_avg_delta_run_exp_pitched - total_field_out_batted - 
-    total_force_out_batted + total_single_batted - total_strikeout_batted - 
-    total_walk_batted - total_caught_stealing_2b_batted - total_at_bats_faced_as_starter_pitched - 
-    total_double_pitched - total_field_out_pitched - total_single_pitched - 
-    total_strikeout_pitched + total_walk_pitched + total_triple_pitched - 
-    total_sac_fly_double_play_pitched - total_triple_play_pitched - 
-    total_pickoff_3b_pitched - total_pickoff_1b_pitched - `total_4-Seam Fastball_pitched` - 
-    total_Cutter_pitched - total_Sinker_pitched - total_Slider_pitched - 
-    `total_Knuckle Curve_pitched` - total_Sweeper_pitched + total_Forkball_pitched - 
-    debutYear, data = allPlayersData)
+test_size <- 1030
+train_index <- sample(nrow(allPlayersDataFiltered), test_size)
+train_data <- allPlayersDataFiltered[train_index, ]
+test_data <- allPlayersDataFiltered[-train_index, ]
 
-summary(insig_then_vif_removing_obs_significant_model)
-
-# list of variables with p-value < 0.001 and VIFs under 5.04: weighted_avg_hit_distance_sc_batted, weighted_avg_iso_value_batted, weighted_avg_max_pitches_thrown_pitched, weighted_avg_pfx_z_pitched, weighted_avg_delta_run_exp_pitched, total_single_batted, total_walk_pitched, total_triple_pitched, total_Forkball_pitched
-
-obs <- allPlayersData$AVG_PLAYING_TIME
-pred <- predict(insig_then_vif_removing_obs_significant_model, allPlayersData)
-RMSE <- RMSE(pred, obs, na.rm=TRUE)
-RMSE
-```
-
-```{r}
-allPlayersDataNAsZeros <- allPlayersData %>% 
-  dplyr::select(-birthCountry, -bats, -throws) %>% 
-  mutate(across(everything(), ~replace_na(., 0)))
-reg2 <- lm(AVG_PLAYING_TIME ~ ., data=allPlayersDataNAsZeros)
-summary(reg2)
-```
-
-```{r}
-obs <- allPlayersDataNAsZeros$AVG_PLAYING_TIME
-pred <- predict(reg2, allPlayersDataNAsZeros)
-RMSE <- RMSE(pred, obs, na.rm=TRUE)
-RMSE
-```
-
-```{r}
-# null <- lm(AVG_PLAYING_TIME ~ 1, data=allPlayersDataNAsZeros)
-# forwardAIC <- step(null, direction="forward", scope=list(upper=reg2))
-backwardAIC <- step(reg2, direction="backward")
-# n <- dim(allPlayersDataNAsZeros)[1]
-# forwardBIC <- step(null, direction="forward", scope=list(upper=reg2),k=log(n))
-# backwardBIC <- step(reg2, direction="backward",k=log(n))
-# stepwiseAIC <- step(null, scope = list(lower = null, upper = reg2), direction = "both")
-# stepwiseBIC <- step(null, scope = list(lower = null, upper = reg2), direction = "both", k = log(n))
-```
-
-```{r}
-extract_stats <- function(model) {
-  f_stat <- summary(model)$fstatistic[1]
-  rse <- summary(model)$sigma
-  r_squared <- summary(model)$r.squared
-  adj_r_squared <- summary(model)$adj.r.squared
-  rmse <- sqrt(mean(residuals(model)^2))
-  return(list(F_stat = f_stat, RSE = rse, R_squared = r_squared, Adj_R_squared = adj_r_squared, RMSE = rmse))
-}
-
-stats_forwardAIC <- extract_stats(forwardAIC)
-stats_backwardAIC <- extract_stats(backwardAIC)
-stats_forwardBIC <- extract_stats(forwardBIC)
-stats_backwardBIC <- extract_stats(backwardBIC)
-stats_stepwiseAIC <- extract_stats(stepwiseAIC)
-stats_stepwiseBIC <- extract_stats(stepwiseBIC)
-
-model_summary <- data.frame(
-  Method = c(
-    "Forward Elimination (AIC)", 
-    "Backward Elimination (AIC)", 
-    "Forward Elimination (BIC)", 
-    "Backward Elimination (BIC)",
-    "Stepwise Elimination (AIC)",
-    "Stepwise Elimination (BIC)"
-  ),
-  # Variables_Selected = c(
-  #   paste(names(coef(forwardAIC))[-1], collapse = ", "),
-  #   paste(names(coef(backwardAIC))[-1], collapse = ", "),
-  #   paste(names(coef(forwardBIC))[-1], collapse = ", "),
-  #   paste(names(coef(backwardBIC))[-1], collapse = ", ")
-  # ),
-  AIC = c(AIC(forwardAIC), AIC(backwardAIC), AIC(forwardBIC), AIC(backwardBIC), AIC(stepwiseAIC), AIC(stepwiseBIC)),
-  BIC = c(BIC(forwardAIC), BIC(backwardAIC), BIC(forwardBIC), BIC(backwardBIC), AIC(stepwiseAIC), AIC(stepwiseBIC)),
-  RMSE = c(stats_forwardAIC$RMSE, stats_backwardAIC$RMSE, stats_forwardBIC$RMSE, stats_backwardBIC$RMSE, stats_stepwiseAIC$RMSE, stats_stepwiseBIC$RMSE),
-  RSE = c(stats_forwardAIC$RSE, stats_backwardAIC$RSE, stats_forwardBIC$RSE, stats_backwardBIC$RSE, stats_stepwiseAIC$RSE, stats_stepwiseBIC$RSE),
-  R_squared = c(stats_forwardAIC$R_squared, stats_backwardAIC$R_squared, stats_forwardBIC$R_squared, stats_backwardBIC$R_squared, stats_stepwiseAIC$R_squared, stats_stepwiseBIC$R_squared),
-  Adj_R_squared = c(stats_forwardAIC$Adj_R_squared, stats_backwardAIC$Adj_R_squared, stats_forwardBIC$Adj_R_squared, stats_backwardBIC$Adj_R_squared, stats_stepwiseAIC$Adj_R_squared, stats_stepwiseBIC$Adj_R_squared)
-)
-
-model_summary %>%
-  kable("html", caption = "Summary of Variable Selection Methods and Results") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-  column_spec(2, width = "40em")
-```
-
-```{r}
-# Create a list to store the best models for each statistic
-best_models <- list(
-  Lowest_AIC = model_summary$Method[which.min(model_summary$AIC)],
-  Lowest_BIC = model_summary$Method[which.min(model_summary$BIC)],
-  Lowest_RMSE = model_summary$Method[which.min(model_summary$RMSE)],
-  Lowest_RSE = model_summary$Method[which.min(model_summary$RSE)],
-  Highest_R_squared = model_summary$Method[which.max(model_summary$R_squared)],
-  Highest_Adj_R_squared = model_summary$Method[which.max(model_summary$Adj_R_squared)]
-)
-best_models
-```
-
-```{r}
-backwardAICNAsZeros <- backwardAIC
-summary(backwardAICNAsZeros)
-```
-
-```{r}
-# process of removing predictors from backwardAIC model
-significant_model <- lm(AVG_PLAYING_TIME ~ - weighted_avg_hit_location_batted + 
-    weighted_avg_iso_value_batted - weighted_avg_max_times_faced_batted - 
-    weighted_avg_babip_value_batted - weighted_avg_release_speed_pitched + 
-    weighted_avg_max_pitches_thrown_pitched - weighted_avg_vy0_pitched - weighted_avg_pfx_z_pitched - 
-    weighted_avg_release_pos_z_pitched - total_strikeout_double_play_pitched - 
-    weighted_avg_vz0_pitched - weighted_avg_ay_pitched - weighted_avg_release_spin_rate_pitched + 
-    weighted_avg_delta_run_exp_pitched - total_field_out_batted - 
-    total_force_out_batted + total_single_batted - total_strikeout_batted - 
-    total_walk_batted - total_caught_stealing_2b_batted - total_at_bats_faced_as_starter_pitched - 
-    total_double_pitched - total_field_out_pitched - total_single_pitched - 
-    total_strikeout_pitched + total_walk_pitched - total_triple_pitched - 
-    total_sac_fly_double_play_pitched - total_triple_play_pitched - 
-    total_pickoff_3b_pitched - total_pickoff_caught_stealing_home_pitched - total_Curveball_pitched - 
-    total_Changeup_pitched - birthYear - 
-    total_Forkball_pitched - `total_Split-Finger_pitched` - 
-    debutYear, data = allPlayersDataNAsZeros)
-
-model_summary <- summary(significant_model)
-
-p_values <- model_summary$coefficients[, "Pr(>|t|)"][-1]  # Remove intercept
-
-least_significant_var <- names(which.max(p_values))
-highest_p_value <- max(p_values)
-
-# Print the result
-cat("Least significant variable:", least_significant_var, "\n")
-cat("P-value:", highest_p_value, "\n")
-
-# Calculate VIF for all predictors
-vif_values <- vif(significant_model)
-
-# Identify the variable with the highest VIF
-highest_vif_var <- names(which.max(vif_values))
-highest_vif_value <- max(vif_values)
-
-# Print the result
-cat("Variable with the highest VIF:", highest_vif_var, "\n")
-cat("VIF value:", highest_vif_value, "\n")
-
-vif(significant_model)
-vif(significant_model, "predictor")
-summary(significant_model)
-```
-
-
-```{r}
-# removing the high vifs first then insignificant variables
-vif_then_insig_NAs_zeros_significant_model <- lm(AVG_PLAYING_TIME ~ - weighted_avg_hit_location_batted + 
-    weighted_avg_iso_value_batted - weighted_avg_max_times_faced_batted + 
-    weighted_avg_babip_value_batted - weighted_avg_release_speed_pitched + 
-    weighted_avg_max_pitches_thrown_pitched - weighted_avg_vy0_pitched + weighted_avg_pfx_z_pitched - 
-    weighted_avg_release_pos_z_pitched + total_strikeout_double_play_pitched - 
-    weighted_avg_vz0_pitched - weighted_avg_ay_pitched - weighted_avg_release_spin_rate_pitched + 
-    weighted_avg_delta_run_exp_pitched - total_field_out_batted + 
-    total_force_out_batted - total_single_batted - total_strikeout_batted + 
-    total_walk_batted + total_caught_stealing_2b_batted - total_at_bats_faced_as_starter_pitched - 
-    total_double_pitched - total_field_out_pitched - total_single_pitched - 
-    total_strikeout_pitched + total_walk_pitched + total_triple_pitched - 
-    total_sac_fly_double_play_pitched - total_triple_play_pitched - 
-    total_pickoff_3b_pitched - total_pickoff_caught_stealing_home_pitched + total_Curveball_pitched + 
-    total_Changeup_pitched - birthYear + debutYear + 
-    total_Forkball_pitched + `total_Split-Finger_pitched` +
-    debutYear, data = allPlayersDataNAsZeros)
-
-summary(vif_then_insig_NAs_zeros_significant_model)
-
-# list of variables with p-value < 0.002 and VIFs under 3.97: weighted_avg_iso_value_batted, weighted_avg_babip_value_batted, weighted_avg_pfx_z_pitched, weighted_avg_delta_run_exp_pitched, total_strikeout_double_play_pitched, total_force_out_batted, total_walk_batted, total_caught_stealing_2b_batted, total_walk_pitched, total_triple_pitched, total_Curveball_pitched, total_Changeup_pitched, debutYear, total_Forkball_pitched, `total_Split-Finger_pitched`
-
-obs <- allPlayersDataNAsZeros$AVG_PLAYING_TIME
-pred <- predict(vif_then_insig_NAs_zeros_significant_model, allPlayersDataNAsZeros)
-RMSE <- RMSE(pred, obs, na.rm=TRUE)
-RMSE
-```
-
-```{r}
-# removing the insignificant variables first then high vifs
-insig_then_vif_NAs_zeros_significant_model <- lm(AVG_PLAYING_TIME ~ - weighted_avg_hit_location_batted + 
-    weighted_avg_iso_value_batted - weighted_avg_max_times_faced_batted - 
-    weighted_avg_babip_value_batted - weighted_avg_release_speed_pitched + 
-    weighted_avg_max_pitches_thrown_pitched - weighted_avg_vy0_pitched - weighted_avg_pfx_z_pitched - 
-    weighted_avg_release_pos_z_pitched - total_strikeout_double_play_pitched - 
-    weighted_avg_vz0_pitched - weighted_avg_ay_pitched - weighted_avg_release_spin_rate_pitched + 
-    weighted_avg_delta_run_exp_pitched - total_field_out_batted - 
-    total_force_out_batted + total_single_batted - total_strikeout_batted - 
-    total_walk_batted - total_caught_stealing_2b_batted - total_at_bats_faced_as_starter_pitched - 
-    total_double_pitched - total_field_out_pitched - total_single_pitched - 
-    total_strikeout_pitched + total_walk_pitched - total_triple_pitched - 
-    total_sac_fly_double_play_pitched - total_triple_play_pitched - 
-    total_pickoff_3b_pitched - total_pickoff_caught_stealing_home_pitched - total_Curveball_pitched - 
-    total_Changeup_pitched - birthYear - 
-    total_Forkball_pitched - `total_Split-Finger_pitched` - 
-    debutYear, data = allPlayersDataNAsZeros)
-
-summary(insig_then_vif_NAs_zeros_significant_model)
-
-# list of variables with p-value < 0.0001 and VIFs under 2.21: weighted_avg_iso_value_batted, weighted_avg_max_pitches_thrown_pitched, weighted_avg_delta_run_exp_pitched, total_single_batted, total_walk_pitched
-
-obs <- allPlayersDataNAsZeros$AVG_PLAYING_TIME
-pred <- predict(insig_then_vif_NAs_zeros_significant_model, allPlayersDataNAsZeros)
-RMSE <- RMSE(pred, obs, na.rm=TRUE)
-RMSE
-```
-
-```{r}
-library(broom)
-
-# Function to extract model stats
-extract_stats <- function(model) {
-  model_summary <- summary(model)
-  f_stat <- model_summary$fstatistic[1]  # Extract F-statistic
-  rse <- model_summary$sigma  # Residual Standard Error (RSE)
-  r_squared <- model_summary$r.squared  # R-squared
-  adj_r_squared <- model_summary$adj.r.squared  # Adjusted R-squared
-  rmse <- sqrt(mean(residuals(model)^2))  # RMSE
-  num_predictors <- length(coef(model)) - 1  # Number of predictors (excluding intercept)
-  
-  return(data.frame(F_Stat = f_stat, RSE = rse, R_Squared = r_squared, 
-                    Adj_R_Squared = adj_r_squared, RMSE = rmse, 
-                    Num_Predictors = num_predictors))
-}
-
-# Apply function to all models
-# stats_model1 <- extract_stats(backwardAICRemoveObs)
-stats_model2 <- extract_stats(vif_then_insig_removing_obs_significant_model)
-stats_model3 <- extract_stats(insig_then_vif_removing_obs_significant_model)
-# stats_model4 <- extract_stats(backwardAICNAsZeros)
-stats_model5 <- extract_stats(vif_then_insig_NAs_zeros_significant_model)
-stats_model6 <- extract_stats(insig_then_vif_NAs_zeros_significant_model)
-
-# Combine results into a table
-model_comparison <- bind_rows(
-   stats_model2, stats_model3,  stats_model5, stats_model6,
-  .id = "Model"
-)
-
-# Rename model labels
-model_comparison$Model <- c("Model 2", "Model 3", "Model 5", "Model 6")
-
-# Print table
-model_comparison %>%
-  kable("html", caption = "Model Comparison") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
-
-```
-
-
-```{r}
-autoplot(vif_then_insig_removing_obs_significant_model)
-autoplot(insig_then_vif_removing_obs_significant_model)
-autoplot(vif_then_insig_NAs_zeros_significant_model)
-autoplot(insig_then_vif_NAs_zeros_significant_model)
-```
-
-
-**Pick a model to move forward with, talk about it, tweak it if needed, talk about adding variables back and seeing significance?, then begin to visualize relationship between predictors and AVG_PLAYING_TIME**
-
-```{r}
-allPlayersData <- read_csv("allPlayersData.csv")
-allPlayersData <- allPlayersData %>%
-  filter(!is.na(birthYear)) %>%
-  dplyr::select(-PLAYER_ID, -TOTAL_PLAYING_TIME)
-# head(allPlayersData)
-```
-
-
-```{r}
-library(caret)
-set.seed(123)
-train_index <- createDataPartition(allPlayersData$AVG_PLAYING_TIME, p = 0.8, list = FALSE)
-train_data <- allPlayersData[train_index, ]
-test_data <- allPlayersData[-train_index, ]
+train_data_filtered <- train_data %>% dplyr::select(-PLAYER_ID)
+test_data_filtered <- test_data %>% dplyr::select(-PLAYER_ID)
 
 # Define k-fold cross-validation settings (k = 5)
 k <- 10
 train_control <- trainControl(method = "cv", number = k)
 
 # Fit initial full regression model
-reg1 <- lm(AVG_PLAYING_TIME ~ ., data = allPlayersData)
+reg1 <- lm(AVG_PLAYING_TIME ~ ., data = train_data_filtered)
 
 # Stepwise selection using AIC
-backwardAIC <- step(reg1, direction = "backward")
-backwardAICRemoveObs <- backwardAIC  # Store final AIC model
+# backwardAIC <- step(reg1, direction = "backward")
 
 # Stepwise selection using BIC
-null <- lm(AVG_PLAYING_TIME ~ 1, data = allPlayersData)  # Null model
+null <- lm(AVG_PLAYING_TIME ~ 1, data = train_data)  # Null model
 stepwiseBIC <- step(null, 
-                    scope = list(lower = null, upper = backwardAICRemoveObs), 
+                    scope = list(lower = null, upper = backwardAIC), 
                     direction = "both", 
-                    k = log(nrow(allPlayersData)))  # BIC penalty
+                    k = log(nrow(train_data_filtered)))  # BIC penalty
 
 # Function to extract model performance metrics
-extract_stats <- function(model, data) {
+extract_stats <- function(model, data, train_control) {
   model_summary <- summary(model)
   f_stat <- model_summary$fstatistic[1]  # F-statistic
   rse <- model_summary$sigma  # Residual Standard Error (RSE)
@@ -528,12 +213,12 @@ extract_stats <- function(model, data) {
 }
 
 # Extract statistics for both models using cross-validation
-backwardAICRemoveObsstats <- extract_stats(backwardAICRemoveObs, allPlayersData)
-stepwiseBICstats <- extract_stats(stepwiseBIC, allPlayersData)
+backwardAICStats <- extract_stats(backwardAIC, train_data_filtered, train_control)
+stepwiseBICStats <- extract_stats(stepwiseBIC, train_data_filtered, train_control)
 
 # Combine results into a comparison table
 model_comparison <- bind_rows(
-  stepwiseBICstats, backwardAICRemoveObsstats,
+  stepwiseBICStats, backwardAICStats,
   .id = "Model"
 )
 
@@ -549,29 +234,34 @@ summary(stepwiseBIC)
 ```
 
 ```{r}
-new_formula <- update(stepwiseBIC, . ~ . -total_Forkball_pitched - total_field_out_batted - total_field_out_pitched - weighted_avg_max_times_faced_batted - total_single_pitched)
-stepwiseBIC_updated <- lm(new_formula, data = allPlayersData)
+new_formula <- update(stepwiseBIC, . ~ . -total_field_out_batted )
+stepwiseBIC_updated <- lm(new_formula, data = allPlayersDataFiltered)
 summary(stepwiseBIC_updated)
 vif(stepwiseBIC_updated)
-```
 
-```{r}
-obs <- allPlayersData$AVG_PLAYING_TIME
-pred <- predict(stepwiseBIC_updated, allPlayersData)
+obs <- allPlayersDataFiltered$AVG_PLAYING_TIME
+pred <- predict(stepwiseBIC_updated, allPlayersDataFiltered)
 RMSE <- RMSE(pred, obs, na.rm=TRUE)
 RMSE
 ```
 
 ```{r}
-# Assuming allPlayersData is your data frame
-library(ggplot2)
+sampleSubmission <- read.csv("sample_submission.csv")
+predict(stepwiseBIC_updated)
+submission1 <- data.frame(
+  PLAYER_ID = allPlayersDataFiltered$PLAYER_ID,
+  PLAYING_TIME = predict(stepwiseBIC_updated)
+) %>% 
+  filter(PLAYER_ID %in% sampleSubmission$PLAYER_ID)
+head(submission1)
+write.csv(submission1, "submission1.csv", row.names=FALSE)
+nrow(submission1)
+```
 
-# Create the scatter plot
-ggplot(allPlayersData, aes(x = total_strikeout_batted, y = AVG_PLAYING_TIME)) +
-  geom_point(color = "blue") +
-  labs(title = "Scatter Plot of AVG_PLAYING_TIME vs total_strikeout_batted                     ",
-       x = "total_strikeout_batted                     ",
-       y = "Average Playing Time") +
-  theme_minimal()
+```{r}
+obs <- allPlayersDataFiltered$AVG_PLAYING_TIME
+pred <- predict(stepwiseBIC_updated, test_data_filtered)
+RMSE <- RMSE(pred, obs, na.rm=TRUE)
+RMSE
 ```
 
