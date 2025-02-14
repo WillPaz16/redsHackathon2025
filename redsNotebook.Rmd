@@ -1,0 +1,94 @@
+---
+title: "Reds Notebook"
+author: "Harrison Cradduck, Joey Endres, Will Paz"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+glimpse(allPlayersDataallallall)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+allPlayersDataallallall <- read.csv("allPlayersDataallallall.csv", header=TRUE)
+
+selectedVars <- allPlayersDataallallall %>% 
+  dplyr::select(AVG_PLAYING_TIME, plateAppearances_batted, atBatsFaced_pitched, weighted_avg_iso_value_batted, total_single_batted, weighted_avg_max_times_faced_batted, weighted_avg_max_pitches_thrown_pitched, total_walk_batted, total_strikeout_batted, total_at_bats_faced_as_starter_pitched, total_at_bats_faced_as_reliever_pitched)
+```
+
+
+```{r, fig.width=10, fig.height=5, echo=FALSE, message=FALSE}
+batting <- selectedVars %>% 
+  filter(plateAppearances_batted > atBatsFaced_pitched & plateAppearances_batted > 100) %>% 
+  mutate(avg_single_batted = total_single_batted / ((atBatsFaced_pitched + plateAppearances_batted)/AVG_PLAYING_TIME))
+
+plot1 <- ggplot(batting, aes(x = avg_single_batted, y = AVG_PLAYING_TIME)) +
+  geom_point(alpha = 0.6) +  
+  geom_smooth(method="lm", color="blue", se=FALSE) +
+  labs(title = "Playing Time vs. Total Singles Batted",
+       x = "Total Singles Batted",
+       y = "Playing Time") +
+  theme_minimal()
+
+plot2 <- ggplot(batting, aes(x = weighted_avg_iso_value_batted, y = AVG_PLAYING_TIME)) +
+  geom_point(alpha = 0.6) +  
+  geom_smooth(method="lm", color="blue", se=FALSE) +
+  labs(title = "Playing Time vs. Average ISO Value",
+       x = "Average ISO Value",
+       y = "Playing Time") +
+  theme_minimal()
+
+plot1 + plot2
+```
+
+
+```{r, fig.width=10, fig.height=5, echo=FALSE, message=FALSE}
+pitching <- selectedVars %>% 
+  filter(plateAppearances_batted >100) %>%
+  mutate(avg_walk_batted = total_walk_batted / ((atBatsFaced_pitched + plateAppearances_batted)/AVG_PLAYING_TIME),
+         avg_strikeout_batted = total_strikeout_batted / ((atBatsFaced_pitched + plateAppearances_batted)/AVG_PLAYING_TIME))
+
+plot3 <- ggplot(pitching, aes(x = avg_walk_batted, y = AVG_PLAYING_TIME)) +
+  geom_point(alpha = 0.6) +  
+  geom_smooth(method="lm", color="blue", se=FALSE) +
+  labs(title = "Playing Time vs. Avg Walks Batted",
+       x = "Average Walks Batted",
+       y = "Playing Time") +
+  theme_minimal()
+
+plot4 <- ggplot(pitching, aes(x = avg_strikeout_batted, y = AVG_PLAYING_TIME)) +
+  geom_point(alpha = 0.6) +  
+  geom_smooth(method="lm", color="blue", se=FALSE) +
+  labs(title = "Playing Time vs. Avg Strikeouts Batted",
+       x = "Average Strikeouts Batted",
+       y = "Playing Time") +
+  theme_minimal()
+
+plot3 + plot4
+```
+
+```{r, fig.width=10, fig.height=5, echo=FALSE, message=FALSE}
+pitching2 <- selectedVars %>% 
+  filter(atBatsFaced_pitched > 100) %>% 
+  mutate(pitcherIndicator = ifelse(total_at_bats_faced_as_starter_pitched > total_at_bats_faced_as_reliever_pitched, 1, 0))
+  
+plot5 <- ggplot(pitching2, aes(x = weighted_avg_max_pitches_thrown_pitched, y = AVG_PLAYING_TIME)) +
+  geom_point(aes(color = pitcherIndicator), alpha = 0.6) +  
+  geom_smooth(method="loess", color="blue", se=FALSE) +
+  labs(title = "Playing Time vs. Avg Max Pitches Thrown",
+       x = "Avg Max Pitches Thrown",
+       y = "Playing Time") +
+  scale_color_manual(values = c(1 = "red", 0 = "blue")) +
+  theme_minimal()
+
+plot5
+```
+
