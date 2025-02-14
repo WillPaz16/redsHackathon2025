@@ -9,9 +9,25 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
-glimpse(allPlayersDataallallall)
-```
+## Introduction
+
+> 
+
+## Data Wrangling
+
+> 
+
+## Regression Modeling
+
+> 
+
+## Model Selection & Validation
+
+> 
+
+## Findings
+
+>
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 library(ggplot2)
@@ -23,7 +39,6 @@ allPlayersDataallallall <- read.csv("allPlayersDataallallall.csv", header=TRUE)
 selectedVars <- allPlayersDataallallall %>% 
   dplyr::select(AVG_PLAYING_TIME, plateAppearances_batted, atBatsFaced_pitched, weighted_avg_iso_value_batted, total_single_batted, weighted_avg_max_times_faced_batted, weighted_avg_max_pitches_thrown_pitched, total_walk_batted, total_strikeout_batted, total_at_bats_faced_as_starter_pitched, total_at_bats_faced_as_reliever_pitched)
 ```
-
 
 ```{r, fig.width=10, fig.height=5, echo=FALSE, message=FALSE}
 batting <- selectedVars %>% 
@@ -48,7 +63,6 @@ plot2 <- ggplot(batting, aes(x = weighted_avg_iso_value_batted, y = AVG_PLAYING_
 
 plot1 + plot2
 ```
-
 
 ```{r, fig.width=10, fig.height=5, echo=FALSE, message=FALSE}
 pitching <- selectedVars %>% 
@@ -78,17 +92,27 @@ plot3 + plot4
 ```{r, fig.width=10, fig.height=5, echo=FALSE, message=FALSE}
 pitching2 <- selectedVars %>% 
   filter(atBatsFaced_pitched > 100) %>% 
-  mutate(pitcherIndicator = ifelse(total_at_bats_faced_as_starter_pitched > total_at_bats_faced_as_reliever_pitched, 1, 0))
-  
+  mutate(
+    pitcherIndicator = ifelse(total_at_bats_faced_as_starter_pitched > total_at_bats_faced_as_reliever_pitched, "Starter", "Reliever")
+  ) %>%
+  mutate(pitcherIndicator = factor(pitcherIndicator, levels = c("Starter", "Reliever")))
+
 plot5 <- ggplot(pitching2, aes(x = weighted_avg_max_pitches_thrown_pitched, y = AVG_PLAYING_TIME)) +
   geom_point(aes(color = pitcherIndicator), alpha = 0.6) +  
-  geom_smooth(method="loess", color="blue", se=FALSE) +
-  labs(title = "Playing Time vs. Avg Max Pitches Thrown",
-       x = "Avg Max Pitches Thrown",
-       y = "Playing Time") +
-  scale_color_manual(values = c(1 = "red", 0 = "blue")) +
+  geom_smooth(method = "loess", color = "blue", se = FALSE) +
+  labs(
+    title = "Playing Time vs. Avg Max Pitches Thrown",
+    x = "Avg Max Pitches Thrown",
+    y = "Playing Time",
+    color = "Pitcher Type" # This sets the legend title
+  ) +
+  scale_color_manual(values = c("Starter" = "red", "Reliever" = "blue")) +
   theme_minimal()
 
 plot5
 ```
 
+
+## Discussion & Limitations
+
+> 
