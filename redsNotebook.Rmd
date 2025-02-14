@@ -11,15 +11,15 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Introduction
 
-> 
+> This notebook is designed to detail the processes in which we wrangled the data given to us in kaggle, we fitted and selected various models, we validated said models, and we chose our final model for submission. We were tasked with the question of predicting a Cincinnati Reds' player's total playing time in the 2024 season using play-by-play data from 2021, 2022, and 2023. The sections below aim to display and thoughts and ideas on how we should go about cleaning the data, organizing the data, fitting an appropriate and insightful model, and implementing it for our final submission.
 
 ## Data Wrangling
 
-> 
+> Our initial approach to the data was organizing both the savant and lahman data to be specific to batters and pitchers separately. This allowed us to create two comprehensive dataframes of every variable we deemed "possibly relevant" to predicting a batter or pitchers playing time (playing time being measured in plate appearances for batters and at bats faced for pitchers). Creating these lists involved pivoting variables like type of pitch, play event, and how the ball was hit into their separate categorical values to be treated independently within a regression model. Then depending on the type of variable, we created either averages (ex. launch speed, hit distance) or totals (ex. singles, field outs) for a player by at bat, then by game, then by season, and ultimately in total; a weighted average was implemented based on total plate appearances or batters faced in a game and season. Once these lists were complete, we combined them into one dataframe for all players, making the disinction between shared variables (ex. total singles hit batting vs. total singles allowed pitching) for players that played both sides of the ball at one point or another. One thing that was taken into consideration for ensuring the best data was being used for predictions was removing pitchers that batted at some point in the 2021-2023 seasons other than Shohei Ohtani, as pitchers very rarely bat after the conclusion of the 2021 season, and we want our data to be fitted to the same constraints imposed on the 2024 season.
 
 ## Regression Modeling
 
-> 
+> Will, this is the outline I'm thinking of for this section and the selection/validation section below: discuss train/test split, then fitting full regression model, then using forward/backward/stepwise AIC/BIC, comparing them, finding backwardAIC was best by multiple metrics, then improving upon it by eliminating high VIFs and/or high insignificance and ultimately landing on performing stepwiseBIC on the backwardAIC with k-folds validation, then removing contextually insignficant variables and looking at diagnostics to confirm the final "best" model. EMPHASIZE ONLY 10 VARIABLES IN MODEL
 
 ## Model Selection & Validation
 
@@ -27,7 +27,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Findings
 
->
+> discuss the variables in our final model (total_strikeout_batted, weighted_avg_max_pitches_thrown_pitched, weighted_avg_max_times_faced_batted, total_walk_pitched, total_single_pitched, total_single_batted, weighted_avg_iso_value_batted, total_walk_batted, weighted_avg_delta_run_exp_pitched, total_at_bats_faced_as_reliever_pitched), discuss the specific graphs below. EMPHASIZE ONLY 10 VARIABLES IN MODEL
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 library(ggplot2)
@@ -115,7 +115,7 @@ plot5
 
 ## Discussion & Limitations
 
-> 
+> discuss submission qualifications/procedures? what else did we struggle with or could be improved upon?
 
 ## Appendix
 
